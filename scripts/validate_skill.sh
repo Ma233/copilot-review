@@ -34,8 +34,8 @@ if ! grep -q '^---' "$repo_root/SKILL.md"; then
   error "SKILL.md is missing front matter"
 fi
 
-if ! grep -q 'install-skill-from-github.py' "$repo_root/README.md"; then
-  error "README.md does not document GitHub installation"
+if ! grep -q '\$skill-installer install https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
+  error "README.md does not document GitHub installation with skill-installer"
 fi
 
 printf 'OK: repository contains required Codex skill files\n'

@@ -22,6 +22,8 @@ The bundled runtime script is:
 scripts/get_latest_copilot_review.sh
 ```
 
+When Codex uses this skill, it should resolve that relative path from the installed skill root, not from the user's current working directory.
+
 System command dependencies:
 
 - `sh`: required to run the script
@@ -50,19 +52,21 @@ The script:
 Use the current branch:
 
 ```bash
-./scripts/get_latest_copilot_review.sh
+SKILL_ROOT="<absolute-path-to-installed-copilot-review-skill>"
+SCRIPT_PATH="$SKILL_ROOT/scripts/get_latest_copilot_review.sh"
+"$SCRIPT_PATH"
 ```
 
 Use a specific branch:
 
 ```bash
-./scripts/get_latest_copilot_review.sh --branch feature/my-branch
+"$SCRIPT_PATH" --branch feature/my-branch
 ```
 
 Use a specific repository and branch:
 
 ```bash
-./scripts/get_latest_copilot_review.sh --repo owner/repo --branch feature/my-branch
+"$SCRIPT_PATH" --repo owner/repo --branch feature/my-branch
 ```
 
 ## Output

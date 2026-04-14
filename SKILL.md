@@ -5,46 +5,18 @@ description: Fetch the latest GitHub Copilot review data for the pull request as
 
 # Copilot Review
 
-Use the bundled shell script for deterministic retrieval instead of rebuilding ad hoc `gh api` commands.
+Use the bundled script. Do not rebuild the `gh` calls manually.
 
-## Dependencies
-
-- `gh` installed and authenticated
-- `jq` available in `PATH`
-- `git` available when branch or remote metadata must be inferred from a local checkout
-
-## Workflow
-
-1. Confirm `gh` is installed and authenticated.
-2. Run `scripts/get_latest_copilot_review.sh`.
-3. Pass `--branch <name>` when the target branch is not the current branch.
-4. Pass `--repo <owner/name>` when running outside the target repository or when the local checkout points at a fork.
-
-## Commands
-
-Return the latest Copilot review for the current branch:
+Resolve `scripts/get_latest_copilot_review.sh` from this skill directory, not from the user's current working directory.
 
 ```bash
-./scripts/get_latest_copilot_review.sh
-```
-
-Return the latest Copilot review for a specific branch:
-
-```bash
-./scripts/get_latest_copilot_review.sh --branch feature/my-branch
-```
-
-Return the latest Copilot review for a specific repository:
-
-```bash
-./scripts/get_latest_copilot_review.sh --repo owner/repo --branch feature/my-branch
+SKILL_ROOT="<absolute-path-to-this-skill>"
+SCRIPT="$SKILL_ROOT/scripts/get_latest_copilot_review.sh"
+"$SCRIPT" [--branch <name>] [--repo <owner/repo>]
 ```
 
 ## Output
 
-The script prints one JSON object with:
+Print one JSON object with `pull_request` and `review`.
 
-- `pull_request`: PR metadata
-- `review`: the last review whose author login contains `copilot`, including inline comments
-
-If no PR or Copilot review exists, the script exits non-zero with an error message on stderr.
+Exit non-zero if no PR or no Copilot review exists.
