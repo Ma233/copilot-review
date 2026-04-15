@@ -1,6 +1,6 @@
 # copilot-review
 
-`copilot-review` is a Codex skill for fetching the latest GitHub Copilot review attached to the pull request associated with a branch.
+`copilot-review` is a Codex skill for fetching the latest GitHub Copilot review attached to the pull request associated with a branch, evaluating whether the review comments are actually meaningful, and applying the useful ones.
 
 This repository is intended to be installed into Codex directly from GitHub.
 
@@ -20,6 +20,12 @@ The bundled runtime script is:
 
 ```bash
 scripts/get_latest_copilot_review.sh
+```
+
+The bundled compact decision template is:
+
+```bash
+templates/triage_prompt.md
 ```
 
 When Codex uses this skill, it should resolve that relative path from the installed skill root, not from the user's current working directory.
@@ -48,6 +54,20 @@ The script:
 5. Selects the latest review whose author login contains `copilot`.
 6. Fetches comments attached to that review.
 7. Prints a single JSON object.
+
+## Expected Agent Behavior
+
+This skill is intended to support code improvement, not just review display.
+
+When Codex invokes this skill, it should normally:
+
+1. Fetch the latest Copilot review.
+2. Use `templates/triage_prompt.md` to classify comments with minimal token overhead.
+3. Decide which comments are valid, which are questionable, and which should be ignored.
+4. Apply the valid feedback when the user asked for code improvements.
+5. Report the applied and rejected comments with concise reasoning.
+
+Codex should avoid returning raw review JSON or blindly echoing all comments unless the user explicitly asked to inspect the raw review data.
 
 Use the current branch:
 
