@@ -25,14 +25,28 @@ check_command_optional() {
   fi
 }
 
-check_file "README.md"
-check_file "copilot-review-invite/SKILL.md"
-check_file "copilot-review-invite/agents/openai.yaml"
-check_file "copilot-review-invite/scripts/invite_copilot_reviewer.sh"
-check_file "copilot-review-triage/SKILL.md"
-check_file "copilot-review-triage/agents/openai.yaml"
-check_file "copilot-review-triage/scripts/get_latest_copilot_review.sh"
-check_file "copilot-review-triage/templates/triage_prompt.md"
+for path in \
+  "README.md" \
+  "scripts/invite_copilot_reviewer.sh" \
+  "scripts/get_latest_copilot_review.sh" \
+  "copilot-review-invite/SKILL.md" \
+  "copilot-review-invite/agents/openai.yaml" \
+  "copilot-review-invite/scripts/invite_copilot_reviewer.sh" \
+  "copilot-review-loop/SKILL.md" \
+  "copilot-review-loop/agents/openai.yaml" \
+  "copilot-review-loop/scripts/create_or_reuse_draft_pr.sh" \
+  "copilot-review-loop/scripts/invite_copilot_reviewer.sh" \
+  "copilot-review-loop/scripts/get_latest_copilot_review.sh" \
+  "copilot-review-loop/scripts/run_copilot_review_loop.sh" \
+  "copilot-review-loop/templates/triage_prompt.md" \
+  "copilot-review-loop/templates/triage_schema.json" \
+  "copilot-review-triage/SKILL.md" \
+  "copilot-review-triage/agents/openai.yaml" \
+  "copilot-review-triage/scripts/get_latest_copilot_review.sh" \
+  "copilot-review-triage/templates/triage_prompt.md"
+do
+  check_file "$path"
+done
 
 if ! grep -q 'npx skills install -a codex https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
   error "README.md does not document GitHub installation with npx skills"
@@ -44,6 +58,10 @@ fi
 
 if ! grep -q '\$copilot-review-triage' "$repo_root/README.md"; then
   error "README.md does not document the triage skill"
+fi
+
+if ! grep -q '\$copilot-review-loop' "$repo_root/README.md"; then
+  error "README.md does not document the loop skill"
 fi
 
 if grep -q '\$copilot-review:' "$repo_root/README.md"; then
@@ -61,5 +79,6 @@ check_command_optional sh
 check_command_optional gh
 check_command_optional jq
 check_command_optional git
+check_command_optional codex
 
 printf 'Validation complete.\n'

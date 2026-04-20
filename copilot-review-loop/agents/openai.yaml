@@ -1,0 +1,4 @@
+interface:
+  display_name: "Copilot Review Loop"
+  short_description: "Run an autonomous draft PR and Copilot review loop."
+  default_prompt: "Use this skill when the user wants to run an autonomous draft PR and Copilot review loop: create a draft PR, invite GitHub Copilot review, poll for new review comments, apply useful fixes, update the branch, and repeat automatically."

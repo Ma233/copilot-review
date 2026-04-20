@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "loop_health",
+    "recommended_action",
+    "developer_value_score",
+    "novelty_score",
+    "repeat_signals",
+    "decisions",
+    "applied_count",
+    "verify_count",
+    "ignore_count",
+    "summary",
+    "tests"
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "applied_changes",
+        "no_action_needed",
+        "human_handoff"
+      ]
+    },
+    "loop_health": {
+      "type": "string",
+      "enum": [
+        "productive",
+        "stalled",
+        "degraded"
+      ]
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "stop_for_human",
+        "stop_no_value"
+      ]
+    },
+    "developer_value_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "novelty_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "repeat_signals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "comment",
+          "classification",
+          "rationale",
+          "theme"
+        ],
+        "properties": {
+          "comment": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "apply",
+              "verify",
+              "ignore"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "theme": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "applied_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "verify_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ignore_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
