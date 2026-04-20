@@ -26,12 +26,13 @@ check_command_optional() {
 }
 
 check_file "README.md"
-check_file "scripts/get_latest_copilot_review.sh"
-check_file "scripts/invite_copilot_reviewer.sh"
 check_file "copilot-review-invite/SKILL.md"
 check_file "copilot-review-invite/agents/openai.yaml"
+check_file "copilot-review-invite/scripts/invite_copilot_reviewer.sh"
 check_file "copilot-review-triage/SKILL.md"
 check_file "copilot-review-triage/agents/openai.yaml"
+check_file "copilot-review-triage/scripts/get_latest_copilot_review.sh"
+check_file "copilot-review-triage/templates/triage_prompt.md"
 
 if ! grep -q 'npx skills install -a codex https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
   error "README.md does not document GitHub installation with npx skills"

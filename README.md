@@ -35,9 +35,9 @@ Use `$copilot-review-triage` for requests like:
 
 ## Runtime
 
-- `scripts/invite_copilot_reviewer.sh`
-- `scripts/get_latest_copilot_review.sh`
-- `templates/triage_prompt.md`
+- `copilot-review-invite/scripts/invite_copilot_reviewer.sh`
+- `copilot-review-triage/scripts/get_latest_copilot_review.sh`
+- `copilot-review-triage/templates/triage_prompt.md`
 
 ## Dependencies
 

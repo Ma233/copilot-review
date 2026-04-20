@@ -7,25 +7,25 @@ description: Fetch the latest GitHub Copilot pull request review, triage the com
 
 Use the bundled script. Do not rebuild the `gh` calls manually.
 
-Resolve scripts from this skill directory's parent repository root.
-Use `../templates/triage_prompt.md`.
+Resolve scripts from this skill directory.
+Use `templates/triage_prompt.md`.
 
 ```bash
 SKILL_ROOT="<absolute-path-to-this-skill>"
-SCRIPT="$SKILL_ROOT/../scripts/get_latest_copilot_review.sh"
+SCRIPT="$SKILL_ROOT/scripts/get_latest_copilot_review.sh"
 "$SCRIPT" [--branch <name>] [--repo <owner/repo>]
 ```
 
 ```bash
-TRIAGE_TEMPLATE="$SKILL_ROOT/../templates/triage_prompt.md"
+TRIAGE_TEMPLATE="$SKILL_ROOT/templates/triage_prompt.md"
 ```
 
 This skill is for action, not display.
 
 Rules:
 
-- Run `../scripts/get_latest_copilot_review.sh`.
-- Use `../templates/triage_prompt.md`.
+- Run `scripts/get_latest_copilot_review.sh`.
+- Use `templates/triage_prompt.md`.
 - Classify each comment as `apply`, `verify`, or `ignore`.
 - Implement `apply` items if the user asked for improvements.
 - Reply with a short summary of applied, verified, and ignored items.
