@@ -28,14 +28,24 @@ check_command_optional() {
 check_file "SKILL.md"
 check_file "README.md"
 check_file "agents/openai.yaml"
+check_file "scripts/copilot_review.sh"
 check_file "scripts/get_latest_copilot_review.sh"
+check_file "scripts/invite_copilot_reviewer.sh"
 
 if ! grep -q '^---' "$repo_root/SKILL.md"; then
   error "SKILL.md is missing front matter"
 fi
 
-if ! grep -q '\$skill-installer install https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
-  error "README.md does not document GitHub installation with skill-installer"
+if ! grep -q 'npx skills install https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
+  error "README.md does not document GitHub installation with npx skills"
+fi
+
+if ! grep -q '\$copilot-review:invite' "$repo_root/SKILL.md"; then
+  error "SKILL.md does not document the invite subcommand"
+fi
+
+if ! grep -q '\$copilot-review:triage' "$repo_root/SKILL.md"; then
+  error "SKILL.md does not document the triage subcommand"
 fi
 
 printf 'OK: repository contains required Codex skill files\n'

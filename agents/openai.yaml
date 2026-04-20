@@ -1,4 +1,4 @@
 interface:
   display_name: "Copilot Review"
-  short_description: "Triage Copilot review comments and apply valid fixes."
-  default_prompt: "Use $copilot-review to fetch the latest Copilot PR review, triage comments as apply/verify/ignore, and implement the apply items."
+  short_description: "Request a Copilot review or address Copilot review feedback on a PR."
+  default_prompt: "Use this skill when the user asks to invite Copilot to review a pull request, request a Copilot review, inspect Copilot review comments, or address Copilot review feedback. If the user only says $copilot-review, ask whether they want to invite Copilot review or triage the latest Copilot review feedback. Explicit forms $copilot-review:invite and $copilot-review:triage are optional."

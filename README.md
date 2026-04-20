@@ -1,6 +1,9 @@
 # copilot-review
 
-`copilot-review` is a Codex skill for fetching the latest GitHub Copilot review attached to the pull request associated with a branch, evaluating whether the review comments are actually meaningful, and applying the useful ones.
+`copilot-review` is a Codex skill for two common GitHub Copilot review tasks on a pull request:
+
+- ask Copilot to review the PR
+- read Copilot's latest review and address the useful feedback
 
 This repository is intended to be installed into Codex directly from GitHub.
 
@@ -9,16 +12,91 @@ This repository is intended to be installed into Codex directly from GitHub.
 Install with:
 
 ```text
-$skill-installer install https://github.com/Ma233/copilot-review
+npx skills install https://github.com/Ma233/copilot-review
 ```
 
 After installation, restart Codex to pick up the new skill.
 
-## Dependencies
+## How Users Should Use It
 
-The bundled runtime script is:
+The primary interface should be natural language, not memorized commands.
+
+Typical user requests:
+
+- `invite copilot review on this pr`
+- `request a copilot review`
+- `check the latest copilot review`
+- `summarize copilot review comments`
+- `address copilot review feedback`
+- `fix the issues from copilot review`
+
+What the skill should do:
+
+- If the user asks to request or invite a review, the skill should run the invite flow.
+- If the user asks to inspect, summarize, triage, fix, or address feedback, the skill should run the triage flow.
+- If the user explicitly writes `$copilot-review` with no extra intent, the skill should ask what they want to do instead of guessing.
+
+Explicit forms are optional, but supported:
+
+- `$copilot-review:invite`
+- `$copilot-review:triage`
+- `$copilot-review`
+
+```mermaid
+flowchart TD
+    A[User request] --> B{Intent}
+    B -->|Invite or request review| C[Run invite flow]
+    B -->|Inspect or address feedback| D[Run triage flow]
+    B -->|Only says $copilot-review| E[Ask clarifying question]
+```
+
+Recommended follow-up:
+
+- `Do you want to invite Copilot review, or triage the latest Copilot review feedback?`
+
+## User Outcomes
+
+### Invite Flow
+
+Best when the user wants Copilot to start reviewing the PR.
+
+Expected result:
+
+- find the current branch's open PR
+- run `gh pr edit --add-reviewer @copilot`
+- report that Copilot was requested
+
+### Triage Flow
+
+Best when the user wants to understand or act on Copilot feedback.
+
+Expected result:
+
+- fetch the latest Copilot-authored review on the PR
+- classify comments as `apply`, `verify`, or `ignore`
+- implement `apply` items when the user asked for improvements
+- reply with a short summary instead of dumping raw review JSON
+
+## Agent Behavior
+
+This skill is for action, not display.
+
+For triage requests, Codex should normally:
+
+1. Fetch the latest Copilot review.
+2. Use `templates/triage_prompt.md`.
+3. Merge duplicate comments.
+4. Reject stale, weak, or incorrect feedback.
+5. Apply valid fixes if the user asked for code improvements.
+6. Reply with a short summary of applied, verified, and ignored items.
+
+## Runtime Layout
+
+The bundled runtime scripts are:
 
 ```bash
+scripts/copilot_review.sh
+scripts/invite_copilot_reviewer.sh
 scripts/get_latest_copilot_review.sh
 ```
 
@@ -28,7 +106,9 @@ The bundled compact decision template is:
 templates/triage_prompt.md
 ```
 
-When Codex uses this skill, it should resolve that relative path from the installed skill root, not from the user's current working directory.
+Codex should resolve these paths from the installed skill root, not from the user's current working directory.
+
+## Dependencies
 
 System command dependencies:
 
@@ -45,7 +125,21 @@ Authentication requirements:
 
 ## Script Behavior
 
-The script:
+Unified entrypoint:
+
+- `scripts/copilot_review.sh invite`
+- `scripts/copilot_review.sh triage`
+
+The entrypoint requires an explicit subcommand. It does not guess.
+
+Invite script:
+
+1. Resolves the target branch, defaulting to the current git branch.
+2. Finds the open pull request associated with that branch.
+3. Runs `gh pr edit --add-reviewer @copilot`.
+4. Prints a single JSON object describing the request.
+
+Triage script:
 
 1. Resolves the target branch, defaulting to the current git branch.
 2. Resolves the target repository, defaulting to the current GitHub repository when possible.
@@ -55,45 +149,43 @@ The script:
 6. Fetches comments attached to that review.
 7. Prints a single JSON object.
 
-## Expected Agent Behavior
-
-This skill is intended to support code improvement, not just review display.
-
-When Codex invokes this skill, it should normally:
-
-1. Fetch the latest Copilot review.
-2. Use `templates/triage_prompt.md` to classify comments with minimal token overhead.
-3. Decide which comments are valid, which are questionable, and which should be ignored.
-4. Apply the valid feedback when the user asked for code improvements.
-5. Report the applied and rejected comments with concise reasoning.
-
-Codex should avoid returning raw review JSON or blindly echoing all comments unless the user explicitly asked to inspect the raw review data.
-
-Use the current branch:
+Use the unified entrypoint for invite mode:
 
 ```bash
 SKILL_ROOT="<absolute-path-to-installed-copilot-review-skill>"
-SCRIPT_PATH="$SKILL_ROOT/scripts/get_latest_copilot_review.sh"
-"$SCRIPT_PATH"
+ENTRYPOINT_PATH="$SKILL_ROOT/scripts/copilot_review.sh"
+"$ENTRYPOINT_PATH" invite
+```
+
+Use the unified entrypoint for triage mode:
+
+```bash
+"$ENTRYPOINT_PATH" triage
 ```
 
 Use a specific branch:
 
 ```bash
-"$SCRIPT_PATH" --branch feature/my-branch
+"$ENTRYPOINT_PATH" triage --branch feature/my-branch
 ```
 
 Use a specific repository and branch:
 
 ```bash
-"$SCRIPT_PATH" --repo owner/repo --branch feature/my-branch
+"$ENTRYPOINT_PATH" triage --repo owner/repo --branch feature/my-branch
 ```
 
 ## Output
 
-The script prints one JSON object with:
+Invite mode prints one JSON object with:
+
+- `pull_request`: PR metadata such as number, URL, title, and head branch
+- `requested_reviewer`: always `@copilot`
+- `status`: request status
+
+Triage mode prints one JSON object with:
 
 - `pull_request`: PR metadata such as number, URL, title, and head branch
 - `review`: the latest Copilot-authored review, including body, state, submitted time, inline comments, and both GitHub review ids
 
-If no matching pull request exists, or if no Copilot review exists for that PR, the script exits non-zero and writes an error message to stderr.
+If no matching pull request exists, or if no Copilot review exists for that PR in triage mode, the corresponding script exits non-zero and writes an error message to stderr.
