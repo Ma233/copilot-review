@@ -12,7 +12,7 @@ This repository is intended to be installed into Codex directly from GitHub.
 Install with:
 
 ```text
-npx skills install https://github.com/Ma233/copilot-review
+npx skills install -a codex https://github.com/Ma233/copilot-review
 ```
 
 After installation, restart Codex to pick up the new skill.

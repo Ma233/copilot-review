@@ -36,7 +36,7 @@ if ! grep -q '^---' "$repo_root/SKILL.md"; then
   error "SKILL.md is missing front matter"
 fi
 
-if ! grep -q 'npx skills install https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
+if ! grep -q 'npx skills install -a codex https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
   error "README.md does not document GitHub installation with npx skills"
 fi
 
