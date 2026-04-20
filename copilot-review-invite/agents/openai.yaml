@@ -1,0 +1,4 @@
+interface:
+  display_name: "Copilot Review Invite"
+  short_description: "Invite GitHub Copilot to review the current pull request."
+  default_prompt: "Use this skill when the user wants to request a Copilot review, invite Copilot to review a pull request, or add @copilot as a reviewer."

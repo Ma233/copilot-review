@@ -25,27 +25,32 @@ check_command_optional() {
   fi
 }
 
-check_file "SKILL.md"
 check_file "README.md"
-check_file "agents/openai.yaml"
-check_file "scripts/copilot_review.sh"
 check_file "scripts/get_latest_copilot_review.sh"
 check_file "scripts/invite_copilot_reviewer.sh"
-
-if ! grep -q '^---' "$repo_root/SKILL.md"; then
-  error "SKILL.md is missing front matter"
-fi
+check_file "copilot-review-invite/SKILL.md"
+check_file "copilot-review-invite/agents/openai.yaml"
+check_file "copilot-review-triage/SKILL.md"
+check_file "copilot-review-triage/agents/openai.yaml"
 
 if ! grep -q 'npx skills install -a codex https://github.com/Ma233/copilot-review' "$repo_root/README.md"; then
   error "README.md does not document GitHub installation with npx skills"
 fi
 
-if ! grep -q '\$copilot-review:invite' "$repo_root/SKILL.md"; then
-  error "SKILL.md does not document the invite subcommand"
+if ! grep -q '\$copilot-review-invite' "$repo_root/README.md"; then
+  error "README.md does not document the invite skill"
 fi
 
-if ! grep -q '\$copilot-review:triage' "$repo_root/SKILL.md"; then
-  error "SKILL.md does not document the triage subcommand"
+if ! grep -q '\$copilot-review-triage' "$repo_root/README.md"; then
+  error "README.md does not document the triage skill"
+fi
+
+if grep -q '\$copilot-review:' "$repo_root/README.md"; then
+  error "README.md still references unsupported colon subcommands"
+fi
+
+if [ -e "$repo_root/SKILL.md" ]; then
+  error "Root SKILL.md should be removed when only explicit invite and triage skills are supported"
 fi
 
 printf 'OK: repository contains required Codex skill files\n'

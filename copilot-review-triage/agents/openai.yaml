@@ -1,0 +1,4 @@
+interface:
+  display_name: "Copilot Review Triage"
+  short_description: "Inspect and address the latest GitHub Copilot review feedback."
+  default_prompt: "Use this skill when the user wants to inspect Copilot review comments, summarize Copilot feedback, or apply valid fixes from the latest Copilot review."
