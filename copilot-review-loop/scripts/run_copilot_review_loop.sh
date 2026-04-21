@@ -210,23 +210,24 @@ append_review_history() {
   jq \
     --argjson round "$history_round" \
     '
-      . + [
-        {
-          round: $round,
-          review_id: (input.review.id // ""),
-          submitted_at: (input.review.submittedAt // null),
-          comment_count: ((input.review.comments // []) | length),
-          comments: (
-            (input.review.comments // [])
-            | map({
-                path: (.path // null),
-                line: (.line // null),
-                body: .body,
-                url: (.url // null)
-              })
-          )
-        }
-      ]
+      (input) as $review_payload
+      | . + [
+          {
+            round: $round,
+            review_id: ($review_payload.review.id // ""),
+            submitted_at: ($review_payload.review.submittedAt // null),
+            comment_count: (($review_payload.review.comments // []) | length),
+            comments: (
+              ($review_payload.review.comments // [])
+              | map({
+                  path: (.path // null),
+                  line: (.line // null),
+                  body: .body,
+                  url: (.url // null)
+                })
+            )
+          }
+        ]
     ' "$review_history_file" "$review_file" > "$tmp_review_history_file"
   mv "$tmp_review_history_file" "$review_history_file"
 }
