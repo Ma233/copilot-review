@@ -210,23 +210,24 @@ append_review_history() {
   jq \
     --argjson round "$history_round" \
     '
-      . + [
-        {
-          round: $round,
-          review_id: (input.review.id // ""),
-          submitted_at: (input.review.submittedAt // null),
-          comment_count: ((input.review.comments // []) | length),
-          comments: (
-            (input.review.comments // [])
-            | map({
-                path: (.path // null),
-                line: (.line // null),
-                body: .body,
-                url: (.url // null)
-              })
-          )
-        }
-      ]
+      (input) as $review_payload
+      | . + [
+          {
+            round: $round,
+            review_id: ($review_payload.review.id // ""),
+            submitted_at: ($review_payload.review.submittedAt // null),
+            comment_count: (($review_payload.review.comments // []) | length),
+            comments: (
+              ($review_payload.review.comments // [])
+              | map({
+                  path: (.path // null),
+                  line: (.line // null),
+                  body: .body,
+                  url: (.url // null)
+                })
+            )
+          }
+        ]
     ' "$review_history_file" "$review_file" > "$tmp_review_history_file"
   mv "$tmp_review_history_file" "$review_history_file"
 }
@@ -392,16 +393,292 @@ $commit_reason"
 create_or_reuse_pr() {
   if [ -n "$repo" ]; then
     if [ -n "$base" ]; then
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --base "$base"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --base "$base" --title "$pr_title" --body "$pr_body"
     else
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --title "$pr_title" --body "$pr_body"
     fi
   else
     if [ -n "$base" ]; then
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --base "$base"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --base "$base" --title "$pr_title" --body "$pr_body"
     else
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --title "$pr_title" --body "$pr_body"
     fi
+  fi
+}
+
+resolve_pr_seed_base_ref() {
+  if [ -n "$base" ]; then
+    for candidate in "$base" "origin/$base" "upstream/$base"; do
+      if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  if [ -n "$repo" ]; then
+    default_base="$(GH_REPO="$repo" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)"
+  else
+    default_base="$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)"
+  fi
+
+  if [ -n "$default_base" ]; then
+    for candidate in "$default_base" "origin/$default_base" "upstream/$default_base"; do
+      if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  return 1
+}
+
+resolve_target_repo_slug() {
+  if [ -n "$repo" ]; then
+    printf '%s\n' "$repo"
+  else
+    gh repo view --json owner,name --jq '.owner.login + "/" + .name'
+  fi
+}
+
+list_meaningful_commit_subjects() {
+  if [ -z "$seed_base_ref" ]; then
+    return 0
+  fi
+
+  git log --reverse --format=%s "$seed_base_ref..HEAD" 2>/dev/null \
+    | awk '
+        !seen[$0]++ &&
+        $0 != "chore: start PR loop" &&
+        $0 !~ /^chore: address Copilot review feedback \(round [0-9]+\)$/ &&
+        $0 !~ /^chore: address Copilot review feedback \(round [0-9]+\):/
+      '
+}
+
+build_diff_path_bullets() {
+  if [ -z "$seed_base_ref" ]; then
+    return 0
+  fi
+
+  git diff --name-only "$seed_base_ref..HEAD" 2>/dev/null \
+    | awk -F/ '
+        NF > 0 {
+          key = $1
+          if (!seen[key]++) {
+            if (count < 5) {
+              printf "- update files under `%s`\n", key
+            }
+            count++
+          }
+        }
+      '
+}
+
+infer_title_style() {
+  title_style="sentence"
+
+  recent_titles_json="$(
+    GH_REPO="$target_repo_slug" gh pr list \
+      --state all \
+      --limit 20 \
+      --json title \
+      --jq '.' 2>/dev/null || printf '[]\n'
+  )"
+
+  conventional_count="$(printf '%s\n' "$recent_titles_json" | jq -r '[.[].title | select(test("^[a-z][a-z0-9_-]*(\\([^)]*\\))?!?: "))] | length' 2>/dev/null || printf '0\n')"
+  sentence_count="$(printf '%s\n' "$recent_titles_json" | jq -r '[.[].title | select(test("^[A-Z]"))] | length' 2>/dev/null || printf '0\n')"
+
+  if [ "$conventional_count" -gt "$sentence_count" ] && [ "$conventional_count" -gt 0 ]; then
+    title_style="conventional"
+  fi
+}
+
+normalize_title_for_style() {
+  raw_title="$1"
+
+  if [ "$title_style" = "sentence" ]; then
+    normalized_title="$(printf '%s\n' "$raw_title" | sed -E 's/^[a-z][a-z0-9_-]*(\([^)]*\))?!?:[[:space:]]+//')"
+    normalized_title="$(printf '%s\n' "$normalized_title" | awk '
+      {
+        if ($0 ~ /^[a-z]/) {
+          printf "%s%s\n", toupper(substr($0, 1, 1)), substr($0, 2)
+        } else {
+          print
+        }
+      }
+    ')"
+    printf '%s\n' "$normalized_title"
+    return 0
+  fi
+
+  printf '%s\n' "$raw_title"
+}
+
+load_local_pr_template() {
+  for candidate in \
+    "$repo_root/.github/pull_request_template.md" \
+    "$repo_root/.github/PULL_REQUEST_TEMPLATE.md" \
+    "$repo_root/pull_request_template.md" \
+    "$repo_root/docs/pull_request_template.md"
+  do
+    if [ -f "$candidate" ]; then
+      cat "$candidate"
+      return 0
+    fi
+  done
+
+  for candidate in \
+    "$repo_root/.github/PULL_REQUEST_TEMPLATE"/*.md \
+    "$repo_root/.github/PULL_REQUEST_TEMPLATE"/*.markdown
+  do
+    if [ -f "$candidate" ]; then
+      cat "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+decode_base64_stream() {
+  if printf 'QQ==\n' | base64 --decode >/dev/null 2>&1; then
+    base64 --decode
+  elif printf 'QQ==\n' | base64 -d >/dev/null 2>&1; then
+    base64 -d
+  else
+    base64 -D
+  fi
+}
+
+load_remote_pr_template() {
+  [ -n "$target_repo_slug" ] || return 1
+
+  for candidate in \
+    ".github/pull_request_template.md" \
+    ".github/PULL_REQUEST_TEMPLATE.md" \
+    "pull_request_template.md" \
+    "docs/pull_request_template.md"
+  do
+    content="$(GH_REPO="$target_repo_slug" gh api "repos/$target_repo_slug/contents/$candidate" --jq '.content' 2>/dev/null || true)"
+    if [ -n "$content" ] && [ "$content" != "null" ]; then
+      printf '%s' "$content" | tr -d '\n' | decode_base64_stream
+      return 0
+    fi
+  done
+
+  template_path="$(
+    GH_REPO="$target_repo_slug" gh api "repos/$target_repo_slug/contents/.github/PULL_REQUEST_TEMPLATE" \
+      --jq 'map(select(.type == "file" and (.name | test("\\.(md|markdown)$"; "i")))) | first.path // empty' 2>/dev/null || true
+  )"
+
+  if [ -n "$template_path" ]; then
+    content="$(GH_REPO="$target_repo_slug" gh api "repos/$target_repo_slug/contents/$template_path" --jq '.content' 2>/dev/null || true)"
+    if [ -n "$content" ] && [ "$content" != "null" ]; then
+      printf '%s' "$content" | tr -d '\n' | decode_base64_stream
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+build_summary_bullets() {
+  summary_bullets="$(list_meaningful_commit_subjects | awk 'NR <= 5 { printf "- %s\n", $0 }')"
+
+  if [ -z "$summary_bullets" ]; then
+    summary_bullets="$(build_diff_path_bullets)"
+  fi
+
+  printf '%s' "$summary_bullets"
+}
+
+inject_section_after_heading() {
+  template_file="$1"
+  heading_regex="$2"
+  section_title="$3"
+  section_content="$4"
+
+  awk \
+    -v heading_regex="$heading_regex" \
+    -v section_title="$section_title" \
+    -v section_content="$section_content" \
+    '
+      BEGIN {
+        inserted = 0
+        section_count = split(section_content, section_lines, "\n")
+      }
+      {
+        print
+        if (!inserted && $0 ~ heading_regex) {
+          print ""
+          for (i = 1; i <= section_count; i++) {
+            if (section_lines[i] != "") {
+              print section_lines[i]
+            }
+          }
+          inserted = 1
+        }
+      }
+      END {
+        if (!inserted) {
+          print ""
+          print "## " section_title
+          print ""
+          for (i = 1; i <= section_count; i++) {
+            if (section_lines[i] != "") {
+              print section_lines[i]
+            }
+          }
+        }
+      }
+    ' "$template_file"
+}
+
+build_initial_pr_metadata() {
+  pr_title=""
+  pr_body=""
+
+  target_repo_slug="$(resolve_target_repo_slug 2>/dev/null || true)"
+  seed_base_ref="$(resolve_pr_seed_base_ref 2>/dev/null || true)"
+  seed_commit=""
+  if [ -n "$seed_base_ref" ]; then
+    seed_commit="$(list_meaningful_commit_subjects | head -n 1 || true)"
+  fi
+
+  if [ -n "$seed_commit" ]; then
+    infer_title_style
+    pr_title="$(normalize_title_for_style "$seed_commit")"
+  fi
+
+  if [ -z "$pr_title" ]; then
+    pr_title="$branch"
+  fi
+
+  summary_bullets="$(build_summary_bullets)"
+  template_content="$(load_local_pr_template 2>/dev/null || true)"
+  if [ -z "$template_content" ]; then
+    template_content="$(load_remote_pr_template 2>/dev/null || true)"
+  fi
+
+  if [ -n "$template_content" ]; then
+    template_file="$state_dir/pr_template.md"
+    rendered_template_file="$state_dir/pr_template.rendered.md"
+    printf '%s\n' "$template_content" > "$template_file"
+    inject_section_after_heading \
+      "$template_file" \
+      '^#{1,6}[[:space:]]+(Summary|What|Description|Changes)([[:space:]]|$)' \
+      "Summary" \
+      "$summary_bullets" > "$rendered_template_file"
+    pr_body="$(cat "$rendered_template_file")"
+  else
+    pr_body="## Summary
+
+$summary_bullets"
+  fi
+
+  if [ -z "$summary_bullets" ] && [ -z "$template_content" ]; then
+    pr_body="Automated draft PR for branch $branch."
   fi
 }
 
@@ -474,13 +751,13 @@ validate_summary_file() {
     (.outcome | type) == "string" and
     (.loop_health | type) == "string" and
     (.recommended_action | type) == "string" and
-    (.developer_value_score | type) == "number" and (.developer_value_score >= 0) and (.developer_value_score <= 5) and (.developer_value_score == floor) and
-    (.novelty_score | type) == "number" and (.novelty_score >= 0) and (.novelty_score <= 5) and (.novelty_score == floor) and
+    (.developer_value_score | type) == "number" and (.developer_value_score >= 0) and (.developer_value_score <= 5) and (.developer_value_score == (.developer_value_score | floor)) and
+    (.novelty_score | type) == "number" and (.novelty_score >= 0) and (.novelty_score <= 5) and (.novelty_score == (.novelty_score | floor)) and
     (.repeat_signals | type) == "array" and
     (.summary | type) == "string" and
-    (.applied_count | type) == "number" and (.applied_count >= 0) and (.applied_count == floor) and
-    (.verify_count | type) == "number" and (.verify_count >= 0) and (.verify_count == floor) and
-    (.ignore_count | type) == "number" and (.ignore_count >= 0) and (.ignore_count == floor) and
+    (.applied_count | type) == "number" and (.applied_count >= 0) and (.applied_count == (.applied_count | floor)) and
+    (.verify_count | type) == "number" and (.verify_count >= 0) and (.verify_count == (.verify_count | floor)) and
+    (.ignore_count | type) == "number" and (.ignore_count >= 0) and (.ignore_count == (.ignore_count | floor)) and
     (.tests | type) == "array" and
     (.decisions | type) == "array" and
     ([.decisions[] | (.comment | type) == "string" and (.classification | type) == "string" and (.rationale | type) == "string" and (.theme | type) == "string"] | all)
@@ -508,6 +785,7 @@ wait_for_new_review() {
 
 log "Working tree: $repo_root"
 log "Branch: $branch"
+build_initial_pr_metadata
 write_state "running" 0 "" "" "starting"
 
 if commit_all_changes 0 "Automated bootstrap commit for the Copilot PR loop."; then
