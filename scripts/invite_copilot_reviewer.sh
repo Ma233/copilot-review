@@ -6,16 +6,14 @@ error() {
   exit 1
 }
 
+cli_error() {
+  echo "$*" >&2
+  exit 2
+}
+
 usage() {
   cat <<'EOF'
-Usage: invite_copilot_reviewer.sh [--branch <branch>] [--repo <owner/repo>]
-
-Invite GitHub Copilot to review the pull request associated with a branch.
-
-Options:
-  --branch <branch>   Branch name. Defaults to the current git branch.
-  --repo <owner/repo> GitHub repository. Defaults to the current repository.
-  --help              Show this help.
+Usage: invite_copilot_reviewer.sh [--branch <name>] [--repo <owner/repo>]
 EOF
 }
 
@@ -78,20 +76,12 @@ repo=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --branch)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --branch" >&2
-        usage >&2
-        exit 2
-      fi
+      [ "$#" -ge 2 ] || cli_error "Missing value for --branch"
       branch="$2"
       shift 2
       ;;
     --repo)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --repo" >&2
-        usage >&2
-        exit 2
-      fi
+      [ "$#" -ge 2 ] || cli_error "Missing value for --repo"
       repo="$2"
       shift 2
       ;;
@@ -100,35 +90,45 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 2
+      cli_error "Unknown argument: $1"
       ;;
   esac
 done
 
 require_command gh
-require_command jq
+
+need_git=""
+if [ -z "$branch" ] || [ -z "$repo" ]; then
+  need_git=1
+fi
+
+if [ -n "$need_git" ]; then
+  require_command git
+fi
 
 if ! gh auth status >/dev/null 2>&1; then
   error "gh is installed but not authenticated. Run 'gh auth login' first."
 fi
 
+if [ -n "$repo" ]; then
+  export GH_REPO="$repo"
+fi
+
 if [ -z "$branch" ]; then
-  require_command git
   branch="$(git branch --show-current 2>/dev/null || true)"
 fi
 
 [ -n "$branch" ] || error "Unable to determine branch. Pass --branch explicitly."
 
-if [ -n "$repo" ]; then
-  export GH_REPO="$repo"
+target_repo="$repo"
+if [ -z "$target_repo" ]; then
+  target_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
 fi
 
-target_repo="$(gh repo view --json owner,name --jq '.owner.login + "/" + .name')"
-head_owner=""
+[ -n "$target_repo" ] || error "Unable to determine repository. Pass --repo explicitly."
 
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+head_owner=""
+if [ -n "$need_git" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   head_remote="$(resolve_head_remote "$branch" 2>/dev/null || true)"
   if [ -n "$head_remote" ]; then
     head_remote_url="$(git remote get-url "$head_remote" 2>/dev/null || true)"
@@ -139,33 +139,27 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   fi
 fi
 
-pr_json=""
+pr_number=""
+
 if [ -n "$head_owner" ]; then
-  pr_json="$(
+  pr_number="$(
     gh api "repos/$target_repo/pulls?state=open&head=$head_owner:$branch&per_page=100" \
       --jq '
         if length == 0 then
           empty
         else
-          sort_by(.updated_at)
-          | last
-          | {
-              number: .number,
-              url: .html_url,
-              title: .title,
-              headRefName: .head.ref
-            }
+          sort_by(.updated_at) | last | .number
         end
-      '
+      ' 2>/dev/null || true
   )"
 fi
 
-if [ -z "$pr_json" ]; then
-  pr_json="$(
+if [ -z "$pr_number" ]; then
+  pr_number="$(
     gh pr list \
       --head "$branch" \
       --state open \
-      --json number,url,title,headRefName,headRepositoryOwner,updatedAt \
+      --json number,headRefName,headRepositoryOwner,updatedAt \
       --limit 100 \
       --jq '
         map(select(.headRefName == "'"$branch"'"))
@@ -176,36 +170,14 @@ if [ -z "$pr_json" ]; then
             | if ($owners | length) > 1 then
                 error("Multiple open pull requests found for branch " + "'"$branch"'" + " across different head repositories; run this script from the source checkout or configure the branch remote so the head owner can be determined.")
               else
-                sort_by(.updatedAt)
-                | last
-                | {
-                    number: .number,
-                    url: .url,
-                    title: .title,
-                    headRefName: .headRefName
-                  }
+                sort_by(.updatedAt) | last | .number
               end
           end
       '
   )"
 fi
 
-if [ -z "$pr_json" ] || [ "$pr_json" = "null" ]; then
-  error "No open pull request found for branch: $branch"
-fi
+[ -n "$pr_number" ] || error "No open pull request found for branch: $branch"
 
-pr_number="$(printf '%s\n' "$pr_json" | jq -r '.number // empty')"
-
-if [ -z "$pr_number" ]; then
-  error "Failed to determine pull request number for branch: $branch"
-fi
-
-gh pr edit "$pr_number" --add-reviewer "@copilot" >/dev/null
-
-printf '%s\n' "$pr_json" | jq -c '
-  {
-    pull_request: .,
-    requested_reviewer: "@copilot",
-    status: "requested"
-  }
-'
+gh pr edit "$pr_number" --add-reviewer @copilot >/dev/null
+printf '%s\n' "$pr_number"

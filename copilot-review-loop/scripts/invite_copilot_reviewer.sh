@@ -2,6 +2,6 @@
 set -eu
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-repo_root="$(CDPATH= cd -- "$script_dir/../.." && pwd)"
+skills_root="$(CDPATH= cd -- "$script_dir/../.." && pwd)"
 
-exec "$repo_root/scripts/invite_copilot_reviewer.sh" "$@"
+exec "$skills_root/copilot-review-invite/scripts/invite_copilot_reviewer.sh" "$@"
