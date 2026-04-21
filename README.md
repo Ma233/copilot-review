@@ -9,7 +9,7 @@ Three Codex skills for GitHub Copilot pull request review workflows:
 ## GitHub Install
 
 ```text
-npx skills install -a codex https://github.com/Ma233/copilot-review
+npx skills install Ma233/copilot-review -a codex
 ```
 
 Restart Codex after installation.
