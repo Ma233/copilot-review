@@ -209,8 +209,17 @@ if [ -n "$base" ]; then
   set -- "$@" --base "$base"
 fi
 
-if [ -n "$title" ]; then
-  set -- "$@" --title "$title" --body "$body"
+if [ -n "$body" ] && [ -z "$title" ]; then
+  title="$branch"
+fi
+
+if [ -n "$title" ] || [ -n "$body" ]; then
+  if [ -n "$title" ]; then
+    set -- "$@" --title "$title"
+  fi
+  if [ -n "$body" ]; then
+    set -- "$@" --body "$body"
+  fi
 else
   set -- "$@" --fill
 fi
