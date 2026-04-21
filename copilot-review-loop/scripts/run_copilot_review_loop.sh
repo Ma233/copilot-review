@@ -392,16 +392,68 @@ $commit_reason"
 create_or_reuse_pr() {
   if [ -n "$repo" ]; then
     if [ -n "$base" ]; then
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --base "$base"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --base "$base" --title "$pr_title" --body "$pr_body"
     else
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --repo "$repo" --title "$pr_title" --body "$pr_body"
     fi
   else
     if [ -n "$base" ]; then
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --base "$base"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --base "$base" --title "$pr_title" --body "$pr_body"
     else
-      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch"
+      "$script_dir/create_or_reuse_draft_pr.sh" --branch "$branch" --title "$pr_title" --body "$pr_body"
     fi
+  fi
+}
+
+resolve_pr_seed_base_ref() {
+  if [ -n "$base" ]; then
+    for candidate in "$base" "origin/$base" "upstream/$base"; do
+      if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  if [ -n "$repo" ]; then
+    default_base="$(GH_REPO="$repo" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)"
+  else
+    default_base="$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)"
+  fi
+
+  if [ -n "$default_base" ]; then
+    for candidate in "$default_base" "origin/$default_base" "upstream/$default_base"; do
+      if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  return 1
+}
+
+build_initial_pr_metadata() {
+  pr_title=""
+  pr_body=""
+
+  seed_base_ref="$(resolve_pr_seed_base_ref 2>/dev/null || true)"
+  seed_commit=""
+  if [ -n "$seed_base_ref" ]; then
+    seed_commit="$(git rev-list --reverse "$seed_base_ref..HEAD" 2>/dev/null | head -n 1 || true)"
+  fi
+
+  if [ -n "$seed_commit" ]; then
+    pr_title="$(git log -1 --format=%s "$seed_commit" 2>/dev/null || true)"
+    pr_body="$(git log -1 --format=%b "$seed_commit" 2>/dev/null || true)"
+  fi
+
+  if [ -z "$pr_title" ]; then
+    pr_title="$branch"
+  fi
+
+  if [ -z "$pr_body" ]; then
+    pr_body="Automated draft PR for branch $branch."
   fi
 }
 
@@ -508,6 +560,7 @@ wait_for_new_review() {
 
 log "Working tree: $repo_root"
 log "Branch: $branch"
+build_initial_pr_metadata
 write_state "running" 0 "" "" "starting"
 
 if commit_all_changes 0 "Automated bootstrap commit for the Copilot PR loop."; then
