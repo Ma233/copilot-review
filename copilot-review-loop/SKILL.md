@@ -1,6 +1,6 @@
 ---
 name: copilot-review-loop
-description: Run an autonomous GitHub pull request workflow: commit all changes, create or reuse a draft PR, invite GitHub Copilot to review, poll for the latest review, apply useful fixes with Codex, push again, and repeat until high-value review work is exhausted, the max round count is reached, no comments remain, or human intervention is needed.
+description: "Run an autonomous GitHub pull request workflow: commit all changes, create or reuse a draft PR, invite GitHub Copilot to review, poll for the latest review, apply useful fixes with Codex, push again, and repeat until high-value review work is exhausted, the max round count is reached, no comments remain, or human intervention is needed."
 ---
 
 # Copilot Review Loop
