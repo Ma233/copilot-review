@@ -6,16 +6,14 @@ error() {
   exit 1
 }
 
+cli_error() {
+  echo "$*" >&2
+  exit 2
+}
+
 usage() {
   cat <<'EOF'
-Usage: get_latest_copilot_review.sh [--branch <branch>] [--repo <owner/repo>]
-
-Fetch the latest GitHub Copilot review for the pull request associated with a branch.
-
-Options:
-  --branch <branch>   Branch name. Defaults to the current git branch.
-  --repo <owner/repo> GitHub repository. Defaults to the current repository.
-  --help              Show this help.
+Usage: get_latest_copilot_review.sh [--branch <name>] [--repo <owner/repo>]
 EOF
 }
 
@@ -24,6 +22,11 @@ require_command() {
     echo "$1 is required but not found in PATH" >&2
     exit 127
   fi
+}
+
+collect_paginated_array() {
+  endpoint="$1"
+  gh api --paginate "$endpoint" | jq -s 'map(if type == "array" then .[] else . end)'
 }
 
 parse_github_slug_from_url() {
@@ -78,20 +81,12 @@ repo=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --branch)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --branch" >&2
-        usage >&2
-        exit 2
-      fi
+      [ "$#" -ge 2 ] || cli_error "Missing value for --branch"
       branch="$2"
       shift 2
       ;;
     --repo)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --repo" >&2
-        usage >&2
-        exit 2
-      fi
+      [ "$#" -ge 2 ] || cli_error "Missing value for --repo"
       repo="$2"
       shift 2
       ;;
@@ -100,9 +95,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 2
+      cli_error "Unknown argument: $1"
       ;;
   esac
 done
@@ -110,25 +103,38 @@ done
 require_command gh
 require_command jq
 
+need_git=""
+if [ -z "$branch" ] || [ -z "$repo" ]; then
+  need_git=1
+fi
+
+if [ -n "$need_git" ]; then
+  require_command git
+fi
+
 if ! gh auth status >/dev/null 2>&1; then
   error "gh is installed but not authenticated. Run 'gh auth login' first."
 fi
-
-if [ -z "$branch" ]; then
-  require_command git
-  branch="$(git branch --show-current 2>/dev/null || true)"
-fi
-
-[ -n "$branch" ] || error "Unable to determine branch. Pass --branch explicitly."
 
 if [ -n "$repo" ]; then
   export GH_REPO="$repo"
 fi
 
-target_repo="$(gh repo view --json owner,name --jq '.owner.login + "/" + .name')"
-head_owner=""
+if [ -z "$branch" ]; then
+  branch="$(git branch --show-current 2>/dev/null || true)"
+fi
 
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+[ -n "$branch" ] || error "Unable to determine branch. Pass --branch explicitly."
+
+target_repo="$repo"
+if [ -z "$target_repo" ]; then
+  target_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+fi
+
+[ -n "$target_repo" ] || error "Unable to determine repository. Pass --repo explicitly."
+
+head_owner=""
+if [ -n "$need_git" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   head_remote="$(resolve_head_remote "$branch" 2>/dev/null || true)"
   if [ -n "$head_remote" ]; then
     head_remote_url="$(git remote get-url "$head_remote" 2>/dev/null || true)"
@@ -151,11 +157,11 @@ if [ -n "$head_owner" ]; then
           | {
               number: .number,
               url: .html_url,
-              title: .title,
-              headRefName: .head.ref
+              headRefName: .head.ref,
+              baseRefName: .base.ref
             }
         end
-      '
+      ' 2>/dev/null || true
   )"
 fi
 
@@ -164,7 +170,7 @@ if [ -z "$pr_json" ]; then
     gh pr list \
       --head "$branch" \
       --state all \
-      --json number,url,title,headRefName,headRepositoryOwner,updatedAt,state \
+      --json number,url,headRefName,baseRefName,headRepositoryOwner,updatedAt,state \
       --limit 100 \
       --jq '
         map(select(.headRefName == "'"$branch"'"))
@@ -176,69 +182,82 @@ if [ -z "$pr_json" ]; then
                 error("Multiple pull requests found for branch " + "'"$branch"'" + " across different head repositories; run this script from the source checkout or configure the branch remote so the head owner can be determined.")
               else
                 (map(select(.state == "open")) | sort_by(.updatedAt) | last) // (sort_by(.updatedAt) | last)
-                | {
-                    number: .number,
-                    url: .url,
-                    title: .title,
-                    headRefName: .headRefName
-                  }
               end
           end
       '
   )"
 fi
 
-[ -n "$pr_json" ] && [ "$pr_json" != "null" ] || error "No pull request found for branch: $branch"
+[ -n "$pr_json" ] || error "No pull request found for branch: $branch"
 
-pr_number="$(printf '%s\n' "$pr_json" | jq -r '.number // empty')"
-[ -n "$pr_number" ] || error "Failed to determine pull request number for branch: $branch"
+pr_number="$(printf '%s\n' "$pr_json" | jq -r '.number')"
 
-reviews_json="$(gh api --paginate --slurp "repos/$target_repo/pulls/$pr_number/reviews?per_page=100")"
+reviews_json="$(collect_paginated_array "repos/$target_repo/pulls/$pr_number/reviews?per_page=100")"
 
-review_json="$(
-  printf '%s\n' "$reviews_json" | jq -cer '
-    add
-    | map(select(.user.login != null and (.user.login | test("copilot"; "i"))))
-    | sort_by(.submitted_at)
-    | last
-    | if . == null then
-        empty
-      else
-        {
-          databaseId: .id,
-          id: .node_id,
-          author: {
-            login: .user.login
-          },
-          authorAssociation: .author_association,
-          state: .state,
-          body: .body,
-          submittedAt: .submitted_at
-        }
-      end
+latest_review_json="$(
+  printf '%s\n' "$reviews_json" | jq '
+    map(
+      select(
+        (.user.login // "" | ascii_downcase | contains("copilot"))
+        and (.state // "" | ascii_upcase) != "PENDING"
+      )
+    )
+    | sort_by(.submitted_at // "", (.id // 0))
+    | if length == 0 then null else last end
   '
 )"
 
-[ -n "$review_json" ] && [ "$review_json" != "null" ] || error "No GitHub Copilot review found for PR #$pr_number"
+if [ "$(printf '%s\n' "$latest_review_json" | jq -r 'if . == null then "null" else "review" end')" = "null" ]; then
+  jq -n \
+    --argjson pr "$pr_json" \
+    '{
+      pull_request: {
+        number: ($pr.number // null),
+        url: ($pr.url // null),
+        headRefName: ($pr.headRefName // null),
+        baseRefName: ($pr.baseRefName // null)
+      },
+      review: null
+    }'
+  exit 0
+fi
 
-review_database_id="$(printf '%s\n' "$review_json" | jq -r '.databaseId // empty')"
-[ -n "$review_database_id" ] || error "Failed to determine the GitHub review database id for PR #$pr_number"
+review_id="$(printf '%s\n' "$latest_review_json" | jq -r '.id')"
+comments_json="$(collect_paginated_array "repos/$target_repo/pulls/$pr_number/reviews/$review_id/comments?per_page=100")"
 
-comments_json="$(
-  gh api --paginate --slurp "repos/$target_repo/pulls/$pr_number/reviews/$review_database_id/comments?per_page=100" \
-    | jq -cer '
-        add
+jq -n \
+  --argjson pr "$pr_json" \
+  --argjson review "$latest_review_json" \
+  --argjson comments "$comments_json" \
+  '{
+    pull_request: {
+      number: ($pr.number // null),
+      url: ($pr.url // null),
+      headRefName: ($pr.headRefName // null),
+      baseRefName: ($pr.baseRefName // null)
+    },
+    review: {
+      id: (($review.id // null) | if . == null then null else tostring end),
+      state: ($review.state // null),
+      body: ($review.body // ""),
+      submittedAt: ($review.submitted_at // null),
+      url: ($review.html_url // null),
+      author: {
+        login: ($review.user.login // null)
+      },
+      comments: (
+        $comments
         | map({
-            path: .path,
-            line: .line,
-            body: .body,
-            url: .html_url
+            id: ((.id // null) | if . == null then null else tostring end),
+            path: (.path // null),
+            line: (.line // null),
+            side: (.side // null),
+            body: (.body // ""),
+            url: (.html_url // null),
+            commitId: (.commit_id // null),
+            createdAt: (.created_at // null),
+            updatedAt: (.updated_at // null)
           })
-      '
-)"
-
-printf '%s\n' "$review_json" \
-  | jq -c --argjson pull_request "$pr_json" --argjson comments "$comments_json" '
-      . + {comments: $comments}
-      | {pull_request: $pull_request, review: .}
-    '
+      )
+    }
+  }'

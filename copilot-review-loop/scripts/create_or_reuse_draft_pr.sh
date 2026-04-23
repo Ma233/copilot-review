@@ -27,6 +27,67 @@ require_command() {
   fi
 }
 
+is_loop_generated_subject() {
+  subject="$1"
+  case "$subject" in
+    "chore: start PR loop"|\
+    "chore: address Copilot review feedback (round "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_base_ref() {
+  if [ -n "$base" ]; then
+    printf '%s\n' "$base"
+    return 0
+  fi
+
+  default_branch="$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)"
+  if [ -n "$default_branch" ] && [ "$default_branch" != "null" ]; then
+    printf '%s\n' "$default_branch"
+    return 0
+  fi
+
+  return 1
+}
+
+list_meaningful_commit_subjects() {
+  base_ref="$1"
+  merge_base="$(git merge-base "HEAD" "$base_ref" 2>/dev/null || true)"
+  if [ -n "$merge_base" ]; then
+    git log --format=%s --reverse "$merge_base..HEAD" 2>/dev/null || true
+  else
+    git log --format=%s --reverse "HEAD" 2>/dev/null || true
+  fi | while IFS= read -r subject; do
+    [ -n "$subject" ] || continue
+    if is_loop_generated_subject "$subject"; then
+      continue
+    fi
+    printf '%s\n' "$subject"
+  done
+}
+
+build_pr_title() {
+  base_ref="$1"
+  title_subject="$(list_meaningful_commit_subjects "$base_ref" | head -n 1 || true)"
+  if [ -n "$title_subject" ]; then
+    printf '%s\n' "$title_subject"
+  else
+    printf '%s\n' "$branch"
+  fi
+}
+
+build_pr_body() {
+  base_ref="$1"
+  subjects="$(list_meaningful_commit_subjects "$base_ref" || true)"
+  if [ -n "$subjects" ]; then
+    printf '## Summary\n\n'
+    printf '%s\n' "$subjects" | awk '{ printf "- %s\n", $0 }'
+  else
+    printf '## Summary\n\n- Automated draft PR for branch %s.\n' "$branch"
+  fi
+}
+
 parse_github_slug_from_url() {
   remote_url="$1"
   remote_url="${remote_url#git@github.com:}"
@@ -134,8 +195,12 @@ if [ -n "$repo" ]; then
   export GH_REPO="$repo"
 fi
 
+require_command git
 target_repo="$(gh repo view --json owner,name --jq '.owner.login + "/" + .name')"
 head_owner=""
+base_ref="$(resolve_base_ref 2>/dev/null || true)"
+pr_title="$(build_pr_title "$base_ref")"
+pr_body="$(build_pr_body "$base_ref")"
 
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   head_remote="$(resolve_head_remote "$branch" 2>/dev/null || true)"
@@ -199,6 +264,10 @@ if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
   if [ "$(printf '%s\n' "$existing_pr" | jq -r '.isDraft')" != "true" ]; then
     gh pr ready "$pr_number" --undo >/dev/null
   fi
+  current_title="$(printf '%s\n' "$existing_pr" | jq -r '.title // empty')"
+  if is_loop_generated_subject "$current_title" && [ "$pr_title" != "$current_title" ]; then
+    gh pr edit "$pr_number" --title "$pr_title" >/dev/null
+  fi
   gh pr view "$pr_number" --json number,url,title,headRefName,isDraft --jq '. + {status: "reused"}'
   exit 0
 fi
@@ -221,7 +290,7 @@ if [ -n "$title" ] || [ -n "$body" ]; then
     set -- "$@" --body "$body"
   fi
 else
-  set -- "$@" --fill
+  set -- "$@" --title "$pr_title" --body "$pr_body"
 fi
 
 pr_url="$("$@")"
