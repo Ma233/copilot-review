@@ -22,6 +22,10 @@ Rules:
 - Run `scripts/run_copilot_review_loop.sh`.
 - Use the default current branch unless the user names a branch.
 - Prefer the script defaults unless the user asked for different polling or round limits.
+- When creating a new PR, derive the title and description from the actual code diff and commit history, not from the surrounding chat.
+- When possible, match the repository's recent PR title style and honor the project's `pull_request_template.md`.
+- Let the runner keep polling until it reaches one of its own stop conditions; do not interrupt it just because Copilot has not replied yet.
+- When the loop enters `waiting_for_review`, wait through the script's configured review timeout instead of assuming the run is stuck after a few minutes of silence.
 - Treat the goal as high-value review convergence, not zero Copilot comments at any cost.
 - Tell the user whether the loop stopped because it finished cleanly, hit the round limit, timed out waiting for Copilot, detected degraded low-value review churn, or needs human intervention.
 - Keep the reply short and operational.

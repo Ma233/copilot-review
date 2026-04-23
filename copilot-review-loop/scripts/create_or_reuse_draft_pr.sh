@@ -14,7 +14,7 @@ cli_error() {
 
 usage() {
   cat <<'EOF'
-Usage: create_or_reuse_draft_pr.sh [--branch <branch>] [--repo <owner/repo>] [--base <branch>]
+Usage: create_or_reuse_draft_pr.sh [--branch <branch>] [--repo <owner/repo>] [--base <branch>] [--title <title>] [--body <body>]
 
 Create or reuse a draft pull request for a branch.
 EOF
@@ -137,6 +137,8 @@ resolve_head_remote() {
 branch=""
 repo=""
 base=""
+title=""
+body=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -153,6 +155,16 @@ while [ "$#" -gt 0 ]; do
     --base)
       [ "$#" -ge 2 ] || cli_error "Missing value for --base"
       base="$2"
+      shift 2
+      ;;
+    --title)
+      [ "$#" -ge 2 ] || cli_error "Missing value for --title"
+      title="$2"
+      shift 2
+      ;;
+    --body)
+      [ "$#" -ge 2 ] || cli_error "Missing value for --body"
+      body="$2"
       shift 2
       ;;
     --help|-h)
@@ -260,11 +272,28 @@ if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
   exit 0
 fi
 
+set -- gh pr create --draft --head "$branch"
+
 if [ -n "$base" ]; then
-  pr_url="$(gh pr create --draft --head "$branch" --base "$base" --title "$pr_title" --body "$pr_body")"
-else
-  pr_url="$(gh pr create --draft --head "$branch" --title "$pr_title" --body "$pr_body")"
+  set -- "$@" --base "$base"
 fi
+
+if [ -n "$body" ] && [ -z "$title" ]; then
+  title="$branch"
+fi
+
+if [ -n "$title" ] || [ -n "$body" ]; then
+  if [ -n "$title" ]; then
+    set -- "$@" --title "$title"
+  fi
+  if [ -n "$body" ]; then
+    set -- "$@" --body "$body"
+  fi
+else
+  set -- "$@" --title "$pr_title" --body "$pr_body"
+fi
+
+pr_url="$("$@")"
 
 [ -n "$pr_url" ] || error "Failed to create draft pull request."
 
