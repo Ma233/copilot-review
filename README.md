@@ -1,7 +1,8 @@
 # copilot-review
 
-Three Codex skills for GitHub Copilot pull request review workflows:
+Four Codex skills for GitHub Copilot pull request review workflows:
 
+- `$copilot-review-pr`: create or reuse a draft PR for the current branch
 - `$copilot-review-invite`: ask Copilot to review the PR
 - `$copilot-review-triage`: read Copilot's latest review and address the useful feedback
 - `$copilot-review-loop`: run an autonomous draft PR and Copilot review loop
@@ -9,7 +10,7 @@ Three Codex skills for GitHub Copilot pull request review workflows:
 ## GitHub Install
 
 ```text
-npx skills install Ma233/copilot-review -a codex
+npx skills install -a codex https://github.com/Ma233/copilot-review
 ```
 
 Restart Codex after installation.
@@ -17,12 +18,19 @@ Restart Codex after installation.
 ```mermaid
 flowchart TD
     A[User request] --> B{Intent}
-    B -->|Invite or request review| C[Use $copilot-review-invite]
-    B -->|Inspect or address feedback| D[Use $copilot-review-triage]
-    B -->|Run the full PR loop| E[Use $copilot-review-loop]
+    B -->|Open or refresh a draft PR| C[Use $copilot-review-pr]
+    B -->|Invite or request review| D[Use $copilot-review-invite]
+    B -->|Inspect or address feedback| E[Use $copilot-review-triage]
+    B -->|Run the full PR loop| F[Use $copilot-review-loop]
 ```
 
 ## Usage
+
+Use `$copilot-review-pr` for requests like:
+
+- `create a draft pr for this branch`
+- `open or reuse the pr before review`
+- `prepare this branch with a draft pr against main`
 
 Use `$copilot-review-invite` for requests like:
 
@@ -44,6 +52,7 @@ Use `$copilot-review-loop` for requests like:
 ## Runtime
 
 - `copilot-review-invite/scripts/invite_copilot_reviewer.sh`
+- `copilot-review-pr/scripts/create_or_reuse_draft_pr.sh`
 - `copilot-review-triage/scripts/get_latest_copilot_review.sh`
 - `copilot-review-triage/templates/triage_prompt.md`
 - `copilot-review-loop/scripts/create_or_reuse_draft_pr.sh`
@@ -59,7 +68,7 @@ Use `$copilot-review-loop` for requests like:
 
 - commit all local changes
 - push the branch
-- create or reuse a draft PR
+- create or reuse a draft PR through `$copilot-review-pr`
 - invite `@copilot` to review
 - poll for the latest Copilot review
 - call `codex exec` to apply useful feedback

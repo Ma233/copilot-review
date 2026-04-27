@@ -32,6 +32,9 @@ for path in \
   "copilot-review-invite/SKILL.md" \
   "copilot-review-invite/agents/openai.yaml" \
   "copilot-review-invite/scripts/invite_copilot_reviewer.sh" \
+  "copilot-review-pr/SKILL.md" \
+  "copilot-review-pr/agents/openai.yaml" \
+  "copilot-review-pr/scripts/create_or_reuse_draft_pr.sh" \
   "copilot-review-loop/SKILL.md" \
   "copilot-review-loop/agents/openai.yaml" \
   "copilot-review-loop/scripts/create_or_reuse_draft_pr.sh" \
@@ -56,6 +59,10 @@ if ! grep -q '\$copilot-review-invite' "$repo_root/README.md"; then
   error "README.md does not document the invite skill"
 fi
 
+if ! grep -q '\$copilot-review-pr' "$repo_root/README.md"; then
+  error "README.md does not document the PR skill"
+fi
+
 if ! grep -q '\$copilot-review-triage' "$repo_root/README.md"; then
   error "README.md does not document the triage skill"
 fi
@@ -69,7 +76,7 @@ if grep -q '\$copilot-review:' "$repo_root/README.md"; then
 fi
 
 if [ -e "$repo_root/SKILL.md" ]; then
-  error "Root SKILL.md should be removed when only explicit invite and triage skills are supported"
+  error "Root SKILL.md should be removed when the repository only exposes explicit per-skill entry points"
 fi
 
 printf 'OK: repository contains required Codex skill files\n'
