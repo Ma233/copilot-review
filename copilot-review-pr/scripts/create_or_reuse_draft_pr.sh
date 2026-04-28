@@ -27,6 +27,13 @@ require_command() {
   fi
 }
 
+cleanup_file() {
+  path="$1"
+  if [ -n "$path" ] && [ -f "$path" ]; then
+    rm -f "$path"
+  fi
+}
+
 is_loop_generated_subject() {
   subject="$1"
   case "$subject" in
@@ -132,6 +139,12 @@ resolve_head_remote() {
   fi
 
   return 1
+}
+
+count_commits_since_base() {
+  base_ref="$1"
+  [ -n "$base_ref" ] || return 1
+  git rev-list --count "$base_ref..HEAD" 2>/dev/null || return 1
 }
 
 branch=""
@@ -272,6 +285,13 @@ if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
   exit 0
 fi
 
+if [ -n "$base_ref" ]; then
+  commit_count="$(count_commits_since_base "$base_ref" 2>/dev/null || true)"
+  if [ -n "$commit_count" ] && [ "$commit_count" -eq 0 ]; then
+    error "No commits between $base_ref and $branch. Commit your changes and push the branch before creating a draft PR."
+  fi
+fi
+
 set -- gh pr create --draft --head "$branch"
 
 if [ -n "$base" ]; then
@@ -293,7 +313,26 @@ else
   set -- "$@" --title "$pr_title" --body "$pr_body"
 fi
 
-pr_url="$("$@")"
+create_error_file="$(mktemp)"
+trap 'cleanup_file "$create_error_file"' EXIT HUP INT TERM
+
+if pr_url="$("$@" 2>"$create_error_file")"; then
+  :
+else
+  create_error="$(cat "$create_error_file" 2>/dev/null || true)"
+  case "$create_error" in
+    *"No commits between "*)
+      if [ -n "$base_ref" ]; then
+        error "No commits between $base_ref and $branch on GitHub. Commit your changes and push the branch before creating a draft PR."
+      fi
+      error "No commits between the base branch and $branch on GitHub. Commit your changes and push the branch before creating a draft PR."
+      ;;
+    *)
+      printf '%s\n' "$create_error" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 [ -n "$pr_url" ] || error "Failed to create draft pull request."
 

@@ -2,7 +2,7 @@
 
 Four Codex skills for GitHub Copilot pull request review workflows:
 
-- `$copilot-review-pr`: create or reuse a draft PR for the current branch
+- `$copilot-review-pr`: commit and push the current work when needed, then create or reuse a draft PR
 - `$copilot-review-invite`: ask Copilot to review the PR
 - `$copilot-review-triage`: read Copilot's latest review and address the useful feedback
 - `$copilot-review-loop`: run an autonomous draft PR and Copilot review loop
@@ -31,6 +31,7 @@ Use `$copilot-review-pr` for requests like:
 - `create a draft pr for this branch`
 - `open or reuse the pr before review`
 - `prepare this branch with a draft pr against main`
+- `commit my current changes, push the branch, and open a draft pr`
 
 Use `$copilot-review-invite` for requests like:
 
