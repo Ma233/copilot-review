@@ -1,4 +1,4 @@
 interface:
   display_name: "Copilot Review PR"
   short_description: "Create or reuse a draft PR for the current branch."
-  default_prompt: "Use this skill when the user wants to prepare a branch for review or create a draft pull request: inspect the branch state, commit and push the current work when needed, then create or reuse the draft PR for the current branch."
+  default_prompt: "Use this skill when the user wants to prepare a branch for review or create a draft pull request: inspect the branch state, analyze the PR diff and relevant local code to derive a meaningful title and description, commit and push the current work when needed, then create or reuse the draft PR for the current branch."
